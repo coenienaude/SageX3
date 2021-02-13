@@ -1,0 +1,30 @@
+######################################################################################
+## Section automatically added (screen PIH1) 2020-06-04 12:15:33 (ADMIN)
+######################################################################################
+Subprog AP_BPRVCR(VALEUR)
+Variable Char    VALEUR()
+
+
+### Duplicate Supplier Doc numbers not allowed on invoices/debit notes
+
+     If VALEUR<>""
+      If clalev([PIHB])<=0 Local File PINVOICE [PIHB] : Endif
+      
+      Filter [PIHB] Where NUM <> [M]NUM
+      Read [PIHB] PIH1=[M]BPR;vireblc(VALEUR,4)
+      
+      If !fstat 
+        For [PIHB] Where BPRVCR = vireblc(VALEUR,4)
+            If [PIHB]NUM = [M]NUM
+                Break
+            Endif
+
+            Call ERREUR(mess(6,119,1)-[F:PIHB]NUM) From GESECRAN
+            mkstat=2
+            Break
+        Next
+      Endif
+    Endif
+
+
+End

@@ -1,0 +1,8 @@
+When "VERIF_MOD"        : Gosub $SUM_VALUE
+
+####################################################################
+$SUM_VALUE
+
+W1=sigma(J=0,[M:ZSR1]NBLIG-1,[M:ZSR1]ZSRDAMT(J))
+[M:ZSR5]ZSRINVS = W1
+Affzo [M:ZSR5]ZSRINVS

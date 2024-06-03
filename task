@@ -1,0 +1,167 @@
+<?php
+// create_task.php
+session_start();
+require_once 'Config.php';
+require_once 'ToolsWS.php';
+
+if (!isset($_SESSION['x3login']) || !isset($_SESSION['x3passwd'])) {
+    header("Location: login.html");
+    exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $task_name = $_POST['task_name'];
+    $task_description = $_POST['task_description'];
+    $site = $_POST['site'];
+    $contact = $_POST['contact'];
+    $start_date = $_POST['start_date'];
+    $category = $_POST['category'];
+    $rep = $_POST['rep'];
+
+    try {
+        // Create the input XML with the provided data
+        $objectXml = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<PARAM>
+    <GRP ID="TSK0_1">
+        <FLD NAME="SALFCY" TYPE="Char">$site</FLD>
+        <FLD NAME="TSKNUM" TYPE="Char"></FLD>
+        <FLD NAME="TSKCCN" TYPE="Char">$contact</FLD>
+    </GRP>
+    <GRP ID="TSK1_1">
+        <FLD NAME="TSKSTR" TYPE="Date">$start_date</FLD>
+        <FLD NAME="TSKREP" TYPE="Char">$rep</FLD>
+        <FLD NAME="TSKDEL" TYPE="Integer">2</FLD>
+        <FLD NAME="TSKTYP" TYPE="Char">$category</FLD>
+    </GRP>
+    <GRP ID="TSK1_2">
+        <FLD NAME="FULOBJ" TYPE="Clob">$task_description</FLD>
+    </GRP>
+    <GRP ID="TSK1_3">
+        <FLD NAME="TSKORIADI" TYPE="Char">MAN1</FLD>
+    </GRP>
+</PARAM>
+XML;
+
+        // SOAP request body
+        $soapRequest = <<<XML
+<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:wss="http://www.adonix.com/WSS">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <wss:save soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+        <callContext xsi:type="wss:CAdxCallContext">
+           <codeLang xsi:type="xsd:string">ENG</codeLang>
+           <poolAlias xsi:type="xsd:string">PORTAL</poolAlias>
+           <poolId xsi:type="xsd:string"></poolId>
+           <requestConfig xsi:type="xsd:string">
+               adxwss.trace.on=on&adxwss.beautify=true&adxwss.optreturn=XML
+           </requestConfig>
+        </callContext>
+        <publicName xsi:type="xsd:string">ZTASK</publicName>
+        <objectXml xsi:type="xsd:string">
+           <![CDATA[$objectXml]]>          
+        </objectXml>
+      </wss:save>
+   </soapenv:Body>
+</soapenv:Envelope>
+XML;
+
+        // Debugging: Print the full SOAP request
+        //echo "<pre>SOAP Request:\n" . htmlentities($soapRequest) . "</pre>";
+
+        // cURL initialization
+        $ch = curl_init();
+        $url = Config::$WEB_SERVER_X3 . "/soap-generic/syracuse/collaboration/syracuse/CAdxWebServiceXmlCC";
+        //echo "<pre>URL: $url</pre>"; // Debugging
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $soapRequest);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            "Content-Type: text/xml; charset=utf-8",
+            "SOAPAction: \"wss:save\"", // Adjust SOAPAction header if necessary
+            "Authorization: Basic " . base64_encode($_SESSION['x3login'] . ":" . $_SESSION['x3passwd'])
+        ));
+
+        // Execute and get the response
+        $response = curl_exec($ch);
+
+        if (curl_errno($ch)) {
+            throw new Exception(curl_error($ch));
+        }
+
+        // Check for HTTP errors
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($httpCode != 200) {
+            throw new Exception("HTTP Error: " . $httpCode . " Response: " . htmlentities($response));
+        }
+
+        curl_close($ch);
+
+        // Debugging: Print the full SOAP response
+        echo "<pre>SOAP Response:\n" . htmlentities($response) . "</pre>";
+
+        // Ensure the response is not null or empty
+        if ($response === null || $response === '') {
+            throw new Exception("Empty response from the SOAP request.");
+        }
+
+// Process the response
+$responseXml = new SimpleXMLElement($response);
+$namespaces = $responseXml->getNamespaces(true);
+$soapBody = $responseXml->children($namespaces['soapenv'])->Body;
+$saveResponse = $soapBody->children($namespaces['wss'])->saveResponse;
+$saveReturn = $saveResponse->saveReturn;
+
+// Extract the status from the response
+$status = (int)$saveReturn->status;
+
+// Check if the task creation was successful
+if ($status === 0) {
+    // Task creation was successful, extract the task number
+    $taskNumber = $saveReturn->resultXml->xpath("//GRP/FLD[@NAME='TSKNUM']/text()")[0];
+    $message = "Task created successfully. Task Number: " . htmlentities($taskNumber);
+    $message_type = 'success';
+} else {
+    // Task creation failed
+}
+
+} catch (Exception $e) {
+    $message = "Error: " . $e->getMessage();
+    $message_type = 'danger';
+}
+}
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Creation Result</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header text-center">
+                        <h2>Task Creation Result</h2>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="alert alert-<?php echo $message_type; ?>">
+                            <?php echo $message; ?>
+                        </div>
+                        <a href="task_form.html" class="btn btn-primary">Create Another Task</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
